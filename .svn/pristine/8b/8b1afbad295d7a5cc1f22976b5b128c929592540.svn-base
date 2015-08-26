@@ -1,0 +1,581 @@
+package presentation.control;
+
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.logging.Logger;
+
+import org.omg.CORBA.Environment;
+
+import middleware.exceptions.DatabaseException;
+import business.exceptions.BackendException;
+import business.exceptions.UnauthorizedException;
+import business.externalinterfaces.Catalog;
+import business.externalinterfaces.Product;
+import business.productsubsystem.ProductSubsystemFacade;
+import business.usecasecontrol.BrowseAndSelectController;
+import business.usecasecontrol.ManageProductsController;
+import presentation.data.BrowseSelectData;
+import presentation.data.CatalogPres;
+import presentation.data.DataUtil;
+import presentation.data.DefaultData;
+import presentation.data.ManageProductsData;
+import presentation.data.ProductPres;
+import presentation.gui.AddCatalogPopup;
+import presentation.gui.AddProductPopup;
+import presentation.gui.MaintainCatalogsWindow;
+import presentation.gui.MaintainProductsWindow;
+import presentation.gui.MessageableWindow;
+import presentation.gui.ShoppingCartWindow;
+import presentation.gui.TableUtil;
+import javafx.beans.property.SimpleStringProperty;
+import javafx.collections.ObservableList;
+import javafx.event.ActionEvent;
+import javafx.event.EventHandler;
+import javafx.scene.control.MenuItem;
+import javafx.scene.control.TableColumn.CellEditEvent;
+import javafx.scene.input.MouseEvent;
+import javafx.scene.text.Text;
+import javafx.stage.Stage;
+
+public enum ManageProductsUIControl {
+	INSTANCE;
+	private static final Logger LOG = Logger
+			.getLogger(ManageProductsUIControl.class.getPackage().getName());
+	private Stage primaryStage;
+	private Callback startScreenCallback;
+
+	public void setPrimaryStage(Stage ps, Callback returnMessage) {
+		primaryStage = ps;
+		startScreenCallback = returnMessage;
+	}
+
+	// windows managed by this class
+	MaintainCatalogsWindow maintainCatalogsWindow;
+	MaintainProductsWindow maintainProductsWindow;
+	AddCatalogPopup addCatalogPopup;
+	AddProductPopup addProductPopup;
+
+	private class DisplayAddCatalogsGUIHandler implements
+			EventHandler<ActionEvent> {
+		@Override
+		public void handle(ActionEvent e) {
+			addCatalogPopup = new AddCatalogPopup(maintainCatalogsWindow);
+			addCatalogPopup.show(maintainCatalogsWindow);
+		}
+	}
+
+	public DisplayAddCatalogsGUIHandler getDisplayAddCatalogGUIHandler() {
+
+		return new DisplayAddCatalogsGUIHandler();
+	}
+
+	private class DisplayAddProductGUIHandler implements
+			EventHandler<ActionEvent> {
+		@Override
+		public void handle(ActionEvent e) {
+			addProductPopup = new AddProductPopup(maintainProductsWindow);
+			String catNameSelected = ManageProductsData.INSTANCE
+					.getSelectedCatalog().getCatalog().getName();
+			addProductPopup.setCatalog(catNameSelected);
+			addProductPopup.show(maintainProductsWindow);
+		}
+	}
+
+	public DisplayAddProductGUIHandler getDisplayAddProductGUIHandler() {
+
+		return new DisplayAddProductGUIHandler();
+	}
+
+	private class CatalogNameColColEditHandler implements
+			EventHandler<CellEditEvent<CatalogPres, String>> {
+
+		@Override
+		public void handle(CellEditEvent<CatalogPres, String> t) {
+
+			CatalogPres instance = t.getTableView().getItems()
+					.get(t.getTablePosition().getRow());
+			instance.setName(new SimpleStringProperty(t.getNewValue()));
+			TableUtil
+					.refreshTable(maintainProductsWindow.getTable(),
+							ManageProductsData.INSTANCE
+									.getManageProductsSynchronizer());
+		}
+	}
+
+	public CatalogNameColColEditHandler getCatalogNameColColEditHandler() {
+		// TODO Auto-generated method stub
+		return new CatalogNameColColEditHandler();
+	}
+
+	private class CatalogIdColColEditHandler implements
+			EventHandler<CellEditEvent<CatalogPres, String>> {
+
+		@Override
+		public void handle(CellEditEvent<CatalogPres, String> t) {
+
+			CatalogPres instance = t.getTableView().getItems()
+					.get(t.getTablePosition().getRow());
+			instance.setId(new SimpleStringProperty(t.getNewValue()));
+			TableUtil
+					.refreshTable(maintainProductsWindow.getTable(),
+							ManageProductsData.INSTANCE
+									.getManageProductsSynchronizer());
+		}
+	}
+
+	public CatalogIdColColEditHandler getCatalogIdColColEditHandler() {
+		// TODO Auto-generated method stub
+		return new CatalogIdColColEditHandler();
+	}
+
+	private class AddCatalogsHandler implements EventHandler<ActionEvent> {
+		@Override
+		public void handle(ActionEvent e) {
+
+			if (addCatalogPopup.getCatalogId().trim().equals("")) {
+				addCatalogPopup
+						.getMessageBar()
+						.setText(
+								"ID field must be nonempty! \n[Type '0' to auto-generate ID.]");
+			} else if (addCatalogPopup.getCatalogName().trim().equals(""))
+				addCatalogPopup.getMessageBar().setText(
+						"Name field must be nonempty!");
+			else {
+				String idNewVal = addCatalogPopup.getCatalogId();
+				// if (idNewVal.equals("0")) {
+				// idNewVal = DefaultData.generateId(10);
+				// }
+				Catalog newCat = ProductSubsystemFacade.createCatalog(
+						Integer.parseInt(idNewVal),
+						addCatalogPopup.getCatalogName());
+				CatalogPres catPres = new CatalogPres();
+				catPres.setCatalog(newCat);
+
+				if (maintainCatalogsWindow.addItem(catPres)) {
+					maintainCatalogsWindow.getMessageBar().setText("");
+					addCatalogPopup.hide();
+				} else
+					addCatalogPopup.getMessageBar().setText(
+							"Failed to save catalog.");
+
+			}
+		}
+	}
+
+	public AddCatalogsHandler getAddCatalogsHandler(
+			AddCatalogPopup addCatalogPopup) {
+		this.addCatalogPopup = addCatalogPopup;
+		return new AddCatalogsHandler();
+	}
+
+	// Manage catalogs
+	private class DeleteCatalogsHandler implements EventHandler<ActionEvent> {
+		@Override
+		public void handle(ActionEvent e) {
+			TableUtil.selectByRow(maintainCatalogsWindow.getTable());
+			ObservableList<CatalogPres> tableItems = maintainCatalogsWindow
+					.getTable().getItems();
+			ObservableList<Integer> selectedIndices = maintainCatalogsWindow
+					.getTable().getSelectionModel().getSelectedIndices();
+			ObservableList<CatalogPres> selectedItems = maintainCatalogsWindow
+					.getTable().getSelectionModel().getSelectedItems();
+
+			if (tableItems.isEmpty()) {
+				maintainCatalogsWindow.getMessageBar().setText(
+						"Nothing to delete!");
+			} else if (selectedIndices == null || selectedIndices.isEmpty()) {
+				maintainCatalogsWindow.getMessageBar().setText(
+						"Please select a row.");
+			} else {
+				boolean result = ManageProductsData.INSTANCE
+						.removeFromCatalogList(selectedItems);
+				if (result) {
+					maintainCatalogsWindow.getTable().setItems(
+							ManageProductsData.INSTANCE.getCatalogList());
+					maintainCatalogsWindow.clearMessages();
+				} else {
+					maintainCatalogsWindow.displayInfo("No items deleted.");
+				}
+			}
+
+		}
+	}
+
+	public DeleteCatalogsHandler getDeleteCatalogsHandler() {
+		return new DeleteCatalogsHandler();
+	}
+
+	private class MaintainCatalogsHandler implements EventHandler<ActionEvent>,
+			Callback {
+
+		public void doUpdate() {
+			try {
+				Authorization.checkAuthorization(maintainCatalogsWindow,
+						DataUtil.custIsAdmin());
+			} catch (UnauthorizedException e) {
+				maintainCatalogsWindow.displayError(e.getMessage());
+				return;
+			}
+
+			ObservableList<CatalogPres> list = ManageProductsData.INSTANCE
+					.getCatalogList();
+			maintainCatalogsWindow.setData(list);
+			maintainCatalogsWindow.show();
+			primaryStage.hide();
+		}
+
+		public Text getMessageBar() {
+			return startScreenCallback.getMessageBar();
+		}
+
+		@Override
+		public void handle(ActionEvent evt) {
+			maintainCatalogsWindow = new MaintainCatalogsWindow(primaryStage);
+			boolean isLoggedIn = DataUtil.isLoggedIn();
+			if (!isLoggedIn) {
+				LoginUIControl loginControl = new LoginUIControl(
+						maintainCatalogsWindow, primaryStage, this);
+				loginControl.startLogin();
+			} else {
+				doUpdate();
+			}
+		}
+
+	}
+
+	public MaintainCatalogsHandler getMaintainCatalogsHandler() {
+		return new MaintainCatalogsHandler();
+	}
+
+	private class AddCatalogCloseHandler implements EventHandler<ActionEvent> {
+		@Override
+		public void handle(ActionEvent e) {
+			addCatalogPopup.getMessageBar().setText("");
+			addCatalogPopup.hide();
+		}
+	}
+
+	public AddCatalogCloseHandler getAddCatalogCloseHandler(
+			AddCatalogPopup addCatalogPopup) {
+		this.addCatalogPopup = addCatalogPopup;
+		return new AddCatalogCloseHandler();
+	}
+
+	private class AddProductHandler implements EventHandler<ActionEvent> {
+		@Override
+		public void handle(ActionEvent e) {
+
+			// Rules should be managed in a more maintainable way
+			if (addProductPopup.getId().trim().equals("")) {
+				addProductPopup
+						.getMessageBar()
+						.setText(
+								"Product Id field must be nonempty! \n[Type '0' to auto-generate ID.]");
+			} else if (addProductPopup.getName().trim().equals(""))
+				addProductPopup.getMessageBar().setText(
+						"Product Name field must be nonempty!");
+			else if (addProductPopup.getManufactureDate().trim().equals(""))
+				addProductPopup.getMessageBar().setText(
+						"Manufacture Date field must be nonempty!");
+			else if (addProductPopup.getNumAvail().trim().equals(""))
+				addProductPopup.getMessageBar().setText(
+						"Number in Stock field must be nonempty!");
+			else if (addProductPopup.getUnitPrice().trim().equals(""))
+				addProductPopup.getMessageBar().setText(
+						"Unit Price field must be nonempty!");
+			else if (addProductPopup.getDescription().trim().equals(""))
+				addProductPopup.getMessageBar().setText(
+						"Description field must be nonempty!");
+			else {
+
+				String idNewVal = addProductPopup.getId();
+
+				Catalog catalog = ManageProductsData.INSTANCE
+						.getSelectedCatalog().getCatalog();
+
+				Product newProd = ManageProductsController.createProduct(
+						catalog, Integer.parseInt(addProductPopup.getId()),
+						addProductPopup.getName(), Integer
+								.parseInt(addProductPopup.getNumAvail()),
+						Double.parseDouble(addProductPopup.getUnitPrice()),
+						LocalDate.parse(addProductPopup.getManufactureDate(),
+								DateTimeFormatter.ofPattern("MM/dd/yyyy")),
+						addProductPopup.getDescription());
+
+				ProductPres prodPres = new ProductPres();
+				prodPres.setProduct(newProd);
+				maintainProductsWindow.addItem(prodPres);
+				addProductPopup.getMessageBar().setText("");
+				addProductPopup.hide();
+
+			}
+		}
+	}
+
+	public AddProductHandler getAddProductHandler(
+			AddProductPopup addProductPopup) {
+		this.addProductPopup = addProductPopup;
+		return new AddProductHandler();
+	}
+
+	private class AddProductCloseHandler implements EventHandler<ActionEvent> {
+		@Override
+		public void handle(ActionEvent e) {
+			addProductPopup.getMessageBar().setText("");
+			addProductPopup.hide();
+		}
+	}
+
+	public AddProductCloseHandler getAddProductCloseHandler(
+			AddProductPopup addProductPopup) {
+		this.addProductPopup = addProductPopup;
+		return new AddProductCloseHandler();
+	}
+
+	// Manage catalogs
+	private class DeleteProductHandler implements EventHandler<ActionEvent> {
+		@Override
+		public void handle(ActionEvent e) {
+			TableUtil.selectByRow(maintainProductsWindow.getTable());
+			CatalogPres selectedCatalog = ManageProductsData.INSTANCE
+					.getSelectedCatalog();
+			ObservableList<ProductPres> tableItems = ManageProductsData.INSTANCE
+					.getProductsList(selectedCatalog);
+			ObservableList<Integer> selectedIndices = maintainProductsWindow
+					.getTable().getSelectionModel().getSelectedIndices();
+			ObservableList<ProductPres> selectedItems = maintainProductsWindow
+					.getTable().getSelectionModel().getSelectedItems();
+			if (tableItems.isEmpty()) {
+				maintainProductsWindow.getMessageBar().setText(
+						"Nothing to delete!");
+			} else if (selectedIndices == null || selectedIndices.isEmpty()) {
+				maintainProductsWindow.getMessageBar().setText(
+						"Please select a row.");
+			} else {
+				boolean result = ManageProductsData.INSTANCE
+						.removeFromProductList(selectedCatalog, selectedItems);
+				if (result) {
+					maintainProductsWindow.getTable().setItems(
+							ManageProductsData.INSTANCE
+									.getProductsList(selectedCatalog));
+					maintainProductsWindow.clearMessages();
+				} else {
+					maintainProductsWindow.displayInfo("No items deleted.");
+				}
+
+			}
+		}
+	}
+
+	public DeleteProductHandler getDeleteProductHandler() {
+		return new DeleteProductHandler();
+	}
+
+	private class MaintainProductsHandler implements EventHandler<ActionEvent>,
+			Callback {
+
+		public void doUpdate() {
+			try {
+				Authorization.checkAuthorization(maintainProductsWindow,
+						DataUtil.custIsAdmin());
+			} catch (UnauthorizedException e) {
+				maintainProductsWindow.displayError(e.getMessage());
+				return;
+			}
+
+			CatalogPres selectedCatalog = ManageProductsData.INSTANCE
+					.getSelectedCatalog();
+			if (selectedCatalog != null) {
+				ObservableList<ProductPres> list = ManageProductsData.INSTANCE
+						.getProductsList(selectedCatalog);
+				maintainProductsWindow.setData(
+						ManageProductsData.INSTANCE.getCatalogList(), list);
+			}
+			maintainProductsWindow.show();
+			primaryStage.hide();
+		}
+
+		public Text getMessageBar() {
+			return startScreenCallback.getMessageBar();
+		}
+
+		@Override
+		public void handle(ActionEvent evt) {
+			maintainProductsWindow = new MaintainProductsWindow(primaryStage);
+			boolean isLoggedIn = DataUtil.isLoggedIn();
+			if (!isLoggedIn) {
+				LoginUIControl loginControl = new LoginUIControl(
+						maintainProductsWindow, primaryStage, this);
+				loginControl.startLogin();
+			} else {
+				doUpdate();
+			}
+		}
+
+	}
+
+	public MaintainProductsHandler getMaintainProductsHandler() {
+		return new MaintainProductsHandler();
+	}
+
+	private class BackButtonHandler implements EventHandler<ActionEvent> {
+		public void handle(ActionEvent evt) {
+			maintainCatalogsWindow.clearMessages();
+			maintainCatalogsWindow.hide();
+			startScreenCallback.clearMessages();
+			primaryStage.show();
+		}
+
+	}
+
+	public BackButtonHandler getBackButtonHandler() {
+		return new BackButtonHandler();
+	}
+
+	private class BackFromProdsButtonHandler implements
+			EventHandler<ActionEvent> {
+		public void handle(ActionEvent evt) {
+			maintainProductsWindow.clearMessages();
+			maintainProductsWindow.hide();
+			startScreenCallback.clearMessages();
+			primaryStage.show();
+		}
+
+	}
+
+	public BackFromProdsButtonHandler getBackFromProdsButtonHandler() {
+		return new BackFromProdsButtonHandler();
+	}
+
+	private class QuantityColEditHandler implements
+			EventHandler<CellEditEvent<ProductPres, String>> {
+
+		@Override
+		public void handle(CellEditEvent<ProductPres, String> t) {
+			ProductPres instance = t.getTableView().getItems()
+					.get(t.getTablePosition().getRow());
+			instance.setQuantityAvail(new SimpleStringProperty(t.getNewValue()));
+			try {
+				(new ManageProductsController()).updateProduct(instance
+						.getProduct());
+				TableUtil.refreshTable(maintainProductsWindow.getTable(),
+						ManageProductsData.INSTANCE
+								.getManageProductsSynchronizer());
+			} catch (BackendException e) {
+				LOG.warning("Failed to update product information. \r\n"
+						+ e.getMessage());
+			}
+
+		}
+	}
+
+	public QuantityColEditHandler getQuantityColEditHandler() {
+
+		return new QuantityColEditHandler();
+	}
+
+	private class NameColEditHandler implements
+			EventHandler<CellEditEvent<ProductPres, String>> {
+
+		@Override
+		public void handle(CellEditEvent<ProductPres, String> t) {
+
+			ProductPres instance = t.getTableView().getItems()
+					.get(t.getTablePosition().getRow());
+			instance.setName(new SimpleStringProperty(t.getNewValue()));
+			try {
+				(new ManageProductsController()).updateProduct(instance
+						.getProduct());
+				TableUtil.refreshTable(maintainProductsWindow.getTable(),
+						ManageProductsData.INSTANCE
+								.getManageProductsSynchronizer());
+			} catch (BackendException e) {
+
+				LOG.warning("Failed to update product information. \r\n"
+						+ e.getMessage());
+			}
+
+		}
+	}
+
+	public NameColEditHandler getNameColEditHandler() {
+
+		return new NameColEditHandler();
+	}
+
+	private class UnitPriceColEditHandler implements
+			EventHandler<CellEditEvent<ProductPres, String>> {
+
+		@Override
+		public void handle(CellEditEvent<ProductPres, String> t) {
+			ProductPres instance = t.getTableView().getItems()
+					.get(t.getTablePosition().getRow());
+			instance.setUnitPrice(new SimpleStringProperty(t.getNewValue()));
+			try {
+				(new ManageProductsController()).updateProduct(instance
+						.getProduct());
+				TableUtil.refreshTable(maintainProductsWindow.getTable(),
+						ManageProductsData.INSTANCE
+								.getManageProductsSynchronizer());
+			} catch (BackendException e) {
+
+				LOG.warning("Failed to update product information. \r\n"
+						+ e.getMessage());
+			}
+
+		}
+	}
+
+	public UnitPriceColEditHandler getUnitPriceColEditHandler() {
+
+		return new UnitPriceColEditHandler();
+	}
+
+	private class MfgDateColColEditHandler implements
+			EventHandler<CellEditEvent<ProductPres, String>> {
+
+		@Override
+		public void handle(CellEditEvent<ProductPres, String> t) {
+			ProductPres instance = t.getTableView().getItems()
+					.get(t.getTablePosition().getRow());
+			instance.setMfgDate(new SimpleStringProperty(t.getNewValue()));
+			try {
+				(new ManageProductsController()).updateProduct(instance
+						.getProduct());
+				TableUtil.refreshTable(maintainProductsWindow.getTable(),
+						ManageProductsData.INSTANCE
+								.getManageProductsSynchronizer());
+			} catch (BackendException e) {
+
+				LOG.warning("Failed to update product information. \r\n"
+						+ e.getMessage());
+			}
+
+		}
+	}
+
+	public MfgDateColColEditHandler getMfgDateColColEditHandler() {
+		// TODO Auto-generated method stub
+		return new MfgDateColColEditHandler();
+	}
+
+	/*
+	 * private MenuItem maintainCatalogs() { MenuItem retval = new
+	 * MenuItem("Maintain Catalogs"); retval.setOnAction(evt -> {
+	 * MaintainCatalogsWindow maintain = new
+	 * MaintainCatalogsWindow(primaryStage); ObservableList<CatalogPres> list =
+	 * FXCollections.observableList( DefaultData.CATALOG_LIST_DATA);
+	 * maintain.setData(list); maintain.show(); primaryStage.hide();
+	 * 
+	 * }); return retval; } private MenuItem maintainProducts() { MenuItem
+	 * retval = new MenuItem("Maintain Products"); retval.setOnAction(evt -> {
+	 * MaintainProductsWindow maintain = new
+	 * MaintainProductsWindow(primaryStage); ObservableList<Product> list =
+	 * FXCollections.observableList(
+	 * DefaultData.PRODUCT_LIST_DATA.get(DefaultData.BOOKS_CATALOG));
+	 * maintain.setData(DefaultData.CATALOG_LIST_DATA, list); maintain.show();
+	 * primaryStage.hide();
+	 * 
+	 * }); return retval; }
+	 */
+}

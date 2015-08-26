@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<classpath>
+	<classpathentry kind="src" path="src"/>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
+	<classpathentry kind="lib" path="E:/CS425/workspace1/externalJars/creditVerifSystem.jar"/>
+	<classpathentry kind="lib" path="E:/CS425/workspace1/externalJars/jess.jar"/>
+	<classpathentry kind="lib" path="E:/CS425/workspace1/externalJars/junit.jar"/>
+	<classpathentry kind="lib" path="E:/CS425/workspace1/externalJars/mysql-connector-java-5.1.20-bin.jar"/>
+	<classpathentry kind="lib" path="E:/CS425/workspace1/externalJars/rulesencoding.jar"/>
+	<classpathentry kind="lib" path="E:/CS425/workspace1/externalJars/rulesengine.jar"/>
+	<classpathentry kind="lib" path="E:/CS425/workspace1/externalJars/slf4j-api-1.7.2.jar"/>
+	<classpathentry kind="lib" path="E:/CS425/workspace1/externalJars/slf4j-jdk14-1.7.2.jar"/>
+	<classpathentry kind="output" path="bin"/>
+</classpath>

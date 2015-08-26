@@ -1,0 +1,293 @@
+
+package business.customersubsystem;
+
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.logging.Logger;
+
+import middleware.DbConfigProperties;
+import middleware.dataaccess.DataAccessSubsystemFacade;
+import middleware.exceptions.DatabaseException;
+import middleware.externalinterfaces.DbConfigKey;
+import middleware.externalinterfaces.DataAccessSubsystem;
+import middleware.externalinterfaces.DbClass;
+import business.externalinterfaces.Address;
+import business.externalinterfaces.CustomerProfile;
+import business.externalinterfaces.DbClassAddressForTest;
+
+class DbClassAddress implements DbClass, DbClassAddressForTest {
+	private static final Logger LOG = Logger.getLogger(DbClassAddress.class.getPackage().getName());
+	private DataAccessSubsystem dataAccessSS = new DataAccessSubsystemFacade();
+    private CustomerProfile custProfile;
+    private Address address;
+    private List<Address> addressList;
+    private AddressImpl defaultShipAddress;
+    private AddressImpl defaultBillAddress;
+//    private CreditCardImpl defaultPayInfo;
+    private String queryType;
+    private String query;
+    
+    private final String SAVE = "Save";
+    private final String READ = "Read";
+    private final String READ_DEFAULT_BILL = "ReadDefaultBill";
+    private final String READ_DEFAULT_SHIP = "ReadDefaultShip";
+    private final String READ_DEFAULT_PAY = "ReadDefaultPay";
+    
+	//column names
+    private final String STREET = "shipaddress1";
+    private final String STREET2 = "shipaddress2";
+    private final String CITY = "shipcity";
+    private final String STATE = "shipstate";
+    private final String ZIP = "shipzipcode";
+    
+    private final String STREET_BL = "billaddress1";
+    private final String STREET_2BL = "billaddress2";
+    private final String CITY_BL = "billcity";
+    private final String STATE_BL = "billstate";
+    private final String ZIP_BL = "billzipcode";
+    
+    private final String STREET_ALT = "street";
+    private final String CITY_ALT = "city";
+    private final String STATE_ALT = "state";
+    private final String ZIP_ALT = "zip";
+    private final String BILLING = "isbill";
+    private final String SHIPPING = "isship";
+    
+//    private final String NAME_ON_CARD = "nameoncard";
+//    private final String EXP_DATE = "expdate";
+//    private final String CARD_TYPE = "cardtype";
+//    private final String CARD_NUM = "cardnum";
+	
+    public void saveAddress(CustomerProfile custProfile) throws DatabaseException {
+        this.custProfile = custProfile;
+        queryType = SAVE;
+        dataAccessSS.saveWithinTransaction(this);
+    }
+    
+    public void buildQuery() throws DatabaseException {
+    	LOG.info("Query  for " + queryType + ": " + query);
+        if(queryType.equals(SAVE)){
+            buildSaveNewAddrQuery();
+        }
+        else if(queryType.equals(READ)){
+            buildReadAllAddressesQuery();
+        }
+        else if(queryType.equals(READ_DEFAULT_BILL)){
+            buildReadDefaultBillQuery();
+        }
+        else if(queryType.equals(READ_DEFAULT_SHIP)){
+            buildReadDefaultShipQuery();
+        }	
+//        else if(queryType.equals(READ_DEFAULT_PAY)){
+//        	buildReadDefaultPaymentQuery();
+//        }
+    }
+    
+    Address getAddress() {
+        return address;
+    }
+    
+    public List<Address> getAddressList() {
+        return addressList;
+    }
+    
+    AddressImpl getDefaultShipAddress() throws DatabaseException{
+        return this.defaultShipAddress;
+    }
+    
+    AddressImpl getDefaultBillAddress() {
+        return this.defaultBillAddress;
+    }
+    
+//    CreditCardImpl getDefaultPayInfo(){
+//    	return this.defaultPayInfo;
+//    }
+	
+    void readDefaultShipAddress(CustomerProfile custProfile) throws DatabaseException {
+    	//implement  
+    	this.custProfile = custProfile;
+    	queryType = READ_DEFAULT_SHIP;
+    	dataAccessSS.atomicRead(this);
+    }
+    void readDefaultBillAddress(CustomerProfile custProfile) throws DatabaseException {
+    	//implement
+    	this.custProfile = custProfile;
+    	queryType = READ_DEFAULT_BILL;
+    	dataAccessSS.atomicRead(this);
+    }    
+    public void readAllAddresses(CustomerProfile custProfile) throws DatabaseException {
+    	//implement    
+    	this.custProfile = custProfile;
+    	queryType = READ;
+    	dataAccessSS.atomicRead(this);
+    }
+//    
+//    public void readDefaultPayment(CustomerProfile custProfile) throws DatabaseException {
+//    	//implement    
+//    	this.custProfile = custProfile;
+//    	queryType = READ_DEFAULT_PAY;
+//    	dataAccessSS.atomicRead(this);
+//    }
+    
+    
+        
+    void setAddress(Address addr){
+        address = addr;
+    }
+    void buildReadCustNameQuery() {
+        query = "SELECT fname, lname " +
+        "FROM Customer " +
+        "WHERE custid = " + custProfile.getCustId();        
+    }
+	
+    void buildSaveNewAddrQuery() throws DatabaseException {
+        query = "INSERT into altaddress " +
+        		"(addressid,custid,street,city,state,zip) " +
+        		"VALUES(NULL," +
+        				  custProfile.getCustId() + ",'" +
+        				  address.getStreet()+"','" +
+        				  address.getCity() + "','" +
+        				  address.getState() + "','" +
+        				  address.getZip() + "')";
+    }
+    void buildReadAllAddressesQuery() {
+    	//IMPLEMENT -- change custid = 1 to a valid custid 
+        query = "SELECT * from altaddress WHERE custid = "+ custProfile.getCustId();
+    }
+    void buildReadDefaultBillQuery() {
+        query = "SELECT billaddress1, billaddress2, billcity, billstate, billzipcode " +
+                "FROM Customer " +
+                "WHERE custid = " + custProfile.getCustId();
+    }
+    void buildReadDefaultShipQuery() {
+    	
+        query = "SELECT shipaddress1, shipaddress2, shipcity, shipstate, shipzipcode "+
+        "FROM Customer "+
+        "WHERE custid = " + custProfile.getCustId();
+    }
+    
+//    
+//  void buildReadDefaultPaymentQuery() {
+//    	
+//        query = "SELECT nameoncard, expdate, cardtype, cardnum "+
+//        "FROM Customer "+
+//        "WHERE custid = " + custProfile.getCustId();
+//    }
+  
+    public String getDbUrl() {
+    	DbConfigProperties props = new DbConfigProperties();	
+    	return props.getProperty(DbConfigKey.ACCOUNT_DB_URL.getVal());
+        
+    }
+    public String getQuery() {
+        return query;
+        
+    }
+    void populateAddressList(ResultSet rs) throws DatabaseException {
+        addressList = new LinkedList<Address>();
+        if(rs != null){
+            try {
+                while(rs.next()) {
+                    address = new AddressImpl();
+                    String str = rs.getString(STREET_ALT);
+                    address.setStreet(str);
+                    address.setCity(rs.getString(CITY_ALT));
+                    address.setState(rs.getString(STATE_ALT));
+                    address.setZip(rs.getString(ZIP_ALT));
+                    address.setBillingAddress(rs.getBoolean(BILLING));;
+                    address.setShippingAddress(rs.getBoolean(SHIPPING));;
+                    addressList.add(address);
+                    
+                }                
+            }
+            catch(SQLException e){
+                throw new DatabaseException(e);
+            }         
+        }       
+    }
+    
+    void populateDefaultShipAddress(ResultSet rs) throws DatabaseException {
+       //implement
+    	defaultShipAddress = new AddressImpl();
+    	try{
+    		rs.next();
+    		defaultShipAddress.setCity(rs.getString(CITY));
+    		defaultShipAddress.setState(rs.getString(STATE));
+    		defaultShipAddress.setStreet(rs.getString(STREET));
+    		defaultShipAddress.setZip(rs.getString(ZIP));
+    	}catch(SQLException e){
+    	   throw new DatabaseException(e);	
+    	}
+    	
+        
+    }
+    
+    void populateDefaultBillAddress(ResultSet rs) throws DatabaseException {
+        //implement  
+    	
+    	defaultBillAddress = new AddressImpl();
+    	try{
+    	rs.next();
+    	if(rs!=null){
+    		defaultBillAddress.setCity(rs.getString(CITY_BL));
+    		defaultBillAddress.setState(rs.getString(STATE_BL));
+    		defaultBillAddress.setStreet(rs.getString(STREET_BL));
+    		defaultBillAddress.setZip(rs.getString(ZIP_BL));
+    		
+    	}
+    	}catch(SQLException e){
+    	   throw new DatabaseException(e);	
+    	}
+    }
+    
+    
+//    void populateDefaultPayInfo(ResultSet rs) throws DatabaseException {
+//        //implement  
+//    	
+//    	//defaultPayInfo = new CreditCardImpl();
+//    	try{
+//    	rs.next();
+//    	if(rs!=null){
+//    		defaultPayInfo = new CreditCardImpl(rs.getString(NAME_ON_CARD), rs.getString(EXP_DATE), 
+//    				                            rs.getString(CARD_NUM),rs.getString(CARD_TYPE));
+////    		defaultBillAddress.setCity(rs.getString(CITY_BL));
+////    		defaultBillAddress.setState(rs.getString(STATE_BL));
+////    		defaultBillAddress.setStreet(rs.getString(STREET_BL));
+////    		defaultBillAddress.setZip(rs.getString(ZIP_BL));
+//    	}
+//    	}catch(SQLException e){
+//    	   throw new DatabaseException(e);	
+//    	}
+//    }
+//	
+	
+    /* used only when we read from the database
+     */
+    public void populateEntity(ResultSet rs) throws DatabaseException {
+        if(queryType.equals(READ)){
+            populateAddressList(rs);
+        }		        		
+        else if(queryType.equals(READ_DEFAULT_SHIP)){
+            populateDefaultShipAddress(rs);
+        }
+        else if(queryType.equals(this.READ_DEFAULT_BILL)){
+            populateDefaultBillAddress(rs);
+        }
+//        else if(queryType.equals(this.READ_DEFAULT_PAY)){
+//        	populateDefaultPayInfo(rs);
+//        }
+    }
+//    public static void main(String[] args){
+//        DbClassAddress dba = new DbClassAddress();
+//        try {
+//            dba.readAllAddresses(dba.custProfile);
+//            System.out.println(dba.getAddressList());
+//        }
+//        catch(DatabaseException e){
+//            e.printStackTrace();
+//        }
+//    }
+// 
+}

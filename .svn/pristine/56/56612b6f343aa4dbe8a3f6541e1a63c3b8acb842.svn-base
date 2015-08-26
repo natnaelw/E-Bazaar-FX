@@ -1,0 +1,324 @@
+package business.customersubsystem;
+
+import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import presentation.data.DataUtil;
+import middleware.creditverifcation.CreditVerificationFacade;
+import middleware.exceptions.DatabaseException;
+import middleware.exceptions.MiddlewareException;
+import middleware.externalinterfaces.CreditVerification;
+import business.exceptions.BackendException;
+import business.exceptions.BusinessException;
+import business.exceptions.RuleException;
+import business.externalinterfaces.Address;
+import business.externalinterfaces.CartItem;
+import business.externalinterfaces.CreditCard;
+import business.externalinterfaces.CustomerProfile;
+import business.externalinterfaces.CustomerSubsystem;
+import business.externalinterfaces.DbClassAddressForTest;
+import business.externalinterfaces.DbClassPaymentInfoForTest;
+import business.externalinterfaces.Order;
+import business.externalinterfaces.OrderSubsystem;
+import business.externalinterfaces.Rules;
+import business.externalinterfaces.ShoppingCart;
+import business.externalinterfaces.ShoppingCartSubsystem;
+import business.ordersubsystem.OrderSubsystemFacade;
+import business.shoppingcartsubsystem.ShoppingCartSubsystemFacade;
+
+public class CustomerSubsystemFacade implements CustomerSubsystem {
+	ShoppingCartSubsystem shoppingCartSubsystem;
+	OrderSubsystem orderSubsystem;
+	List<Order> orderHistory;
+	AddressImpl defaultShipAddress;
+	AddressImpl defaultBillAddress;
+	CreditCardImpl defaultPaymentInfo;
+	CustomerProfileImpl customerProfile;
+	List<Address> addressList;
+
+	private final static Logger LOGGER = Logger
+			.getLogger(CustomerSubsystem.class.getPackage().getName());
+
+	/**
+	 * Use for loading order history, default addresses, default payment info,
+	 * saved shopping cart,cust profile after login
+	 */
+	public void initializeCustomer(Integer id, int authorizationLevel)
+			throws BackendException {
+		boolean isAdmin = (authorizationLevel >= 1);
+		loadCustomerProfile(id, isAdmin);
+		loadDefaultShipAddress();
+		loadDefaultBillAddress();
+		loadDefaultPaymentInfo();
+		loadAllAddresses();
+		shoppingCartSubsystem = ShoppingCartSubsystemFacade.INSTANCE;
+		shoppingCartSubsystem.setCustomerProfile(customerProfile);
+		shoppingCartSubsystem.retrieveSavedCart();
+		loadOrderData();
+	}
+
+	public void loadCustomerProfile(int id, boolean isAdmin){
+		try {
+
+			DbClassCustomerProfile dbclass = new DbClassCustomerProfile();
+			dbclass.readCustomerProfile(id);
+			customerProfile = dbclass.getCustomerProfile();
+			customerProfile.setIsAdmin(isAdmin);
+		} catch (DatabaseException e) {
+			LOGGER.log(Level.SEVERE,
+					"Database Exception while trying to load customer profile",
+					e);
+		}
+	}
+
+	void loadDefaultShipAddress() throws BackendException {
+		// implement
+		try {
+			LOGGER.setLevel(Level.SEVERE);
+			LOGGER.info("<----->Now loading default address");
+			DbClassAddress dbclassShAdrs = new DbClassAddress();
+			dbclassShAdrs.readDefaultShipAddress(customerProfile);
+			defaultShipAddress = dbclassShAdrs.getDefaultShipAddress();
+
+		} catch (DatabaseException e) {
+			LOGGER.log(
+					Level.SEVERE,
+					"Database Exception while trying to load default shipping address",
+					e);
+		}
+	}
+
+	void loadDefaultBillAddress() throws BackendException {
+		// implement
+		try {
+			DbClassAddress dbclassBilAdrs = new DbClassAddress();
+			dbclassBilAdrs.readDefaultBillAddress(customerProfile);
+			defaultBillAddress = dbclassBilAdrs.getDefaultBillAddress();
+		} catch (DatabaseException e) {
+			LOGGER.log(
+					Level.SEVERE,
+					"Database Exception while trying to load default billing address",
+					e);
+		}
+	}
+
+	void loadDefaultPaymentInfo() throws BackendException {
+		// implement
+		try {
+			DbClassPayment dbclassPayInfo = new DbClassPayment();
+			dbclassPayInfo.readDefaultPayment(customerProfile);
+			defaultPaymentInfo = dbclassPayInfo.getDefaultPayInfo();
+		} catch (Exception e) {
+			LOGGER.log(
+					Level.SEVERE,
+					"Database Exception while trying to load default Payment Info",
+					e);
+		}
+
+	}
+
+	public void loadAllAddresses() throws BackendException {
+		// implement
+		try {
+			DbClassAddress dbClass = new DbClassAddress();
+			dbClass.readAllAddresses(customerProfile);
+			addressList = dbClass.getAddressList();
+		} catch (Exception e) {
+			LOGGER.log(Level.SEVERE,
+					"Database Exception while trying to load all address", e);
+		}
+
+	}
+
+	void loadOrderData() throws BackendException {
+
+		// retrieve the order history for the customer and store here
+		orderSubsystem = new OrderSubsystemFacade(customerProfile);
+		orderHistory = orderSubsystem.getOrderHistory();
+
+	}
+
+	/**
+	 * Returns true if user has admin access
+	 */
+	public boolean isAdmin() {
+		return customerProfile.isAdmin();
+	}
+
+	/**
+	 * Use for saving an address created by user
+	 */
+	public void saveNewAddress(Address addr) throws BackendException {
+		try {
+			DbClassAddress dbClass = new DbClassAddress();
+			dbClass.setAddress(addr);
+			dbClass.saveAddress(customerProfile);
+		} catch (DatabaseException e) {
+			LOGGER.log(Level.SEVERE,
+					"Database Exception while trying to save new address", e);
+		}
+	}
+
+	public CustomerProfile getCustomerProfile() {
+
+		return customerProfile;
+	}
+
+	public Address getDefaultShippingAddress() {
+		return defaultShipAddress;
+	}
+
+	public Address getDefaultBillingAddress() {
+		return defaultBillAddress;
+	}
+
+	public CreditCard getDefaultPaymentInfo() {
+		return defaultPaymentInfo;
+	}
+
+	/**
+	 * Use to supply all stored addresses of a customer when he wishes to select
+	 * an address in ship/bill window
+	 */
+	public List<Address> getAllAddresses() throws BackendException {
+		// implement
+		return addressList;
+
+	}
+
+	public Address runAddressRules(Address addr) throws RuleException,
+			BusinessException {
+
+		Rules transferObject = new RulesAddress(addr);
+		transferObject.runRules();
+
+		// updates are in the form of a List; 0th object is the necessary
+		// Address
+		AddressImpl update = (AddressImpl) transferObject.getUpdates().get(0);
+		return update;
+	}
+
+	public void runPaymentRules(Address addr, CreditCard cc)
+			throws RuleException, BusinessException {
+		Rules transferObject = new RulesPayment(addr, cc);
+		transferObject.runRules();
+	}
+
+	public static Address createAddress(String street, String city,
+			String state, String zip, boolean isShip, boolean isBill) {
+		return new AddressImpl(street, city, state, zip, isShip, isBill);
+	}
+
+	public static CustomerProfile createCustProfile(Integer custid,
+			String firstName, String lastName, boolean isAdmin) {
+		return new CustomerProfileImpl(custid, firstName, lastName, isAdmin);
+	}
+
+	public static CreditCard createCreditCard(String nameOnCard,
+			String expirationDate, String cardNum, String cardType) {
+		return new CreditCardImpl(nameOnCard, expirationDate, cardNum, cardType);
+	}
+
+	@Override
+	public List<Order> getOrderHistory() {
+		return orderHistory;
+	}
+
+	@Override
+	public void setShippingAddressInCart(Address addr) {
+		shoppingCartSubsystem.setShippingAddress(addr);
+
+	}
+
+	@Override
+	public void setBillingAddressInCart(Address addr) {
+		shoppingCartSubsystem.setBillingAddress(addr);
+	}
+
+	@Override
+	public void setPaymentInfoInCart(CreditCard cc) {
+		shoppingCartSubsystem.setPaymentInfo(cc);
+
+	}
+
+	@Override
+	public void submitOrder() throws BackendException {
+		OrderSubsystem os = new OrderSubsystemFacade(customerProfile);
+		os.submitOrder(shoppingCartSubsystem.getLiveCart());
+		
+		/*shoppingCartSubsystem = ShoppingCartSubsystemFacade.INSTANCE;
+		shoppingCartSubsystem.setCustomerProfile(customerProfile);
+		shoppingCartSubsystem.deleteOldShoppingCart();*/
+
+	}
+
+	@Override
+	public void checkCreditCard() throws BusinessException {
+		List<CartItem> items = ShoppingCartSubsystemFacade.INSTANCE
+				.getCartItems();
+
+		ShoppingCart theCart = ShoppingCartSubsystemFacade.INSTANCE
+				.getLiveCart();
+		Address billAddr = theCart.getBillingAddress();
+		CreditCard cc = theCart.getPaymentInfo();
+		String amount = quickComputeTotalPrice(items);// OrderUtil.quickComputeTotalPrice(items);
+		CreditVerification creditVerif = new CreditVerificationFacade();
+		try {
+			creditVerif.checkCreditCard(customerProfile, billAddr, cc,
+					new Double(amount));
+		} catch (MiddlewareException e) {
+			LOGGER.log(Level.SEVERE,
+					"Middleware Exception while checking credit card", e);
+		}
+	}
+
+	public String quickComputeTotalPrice(List<CartItem> items) {
+		double totalPrice = 0.0;
+		for (CartItem cartItem : items) {
+			totalPrice += Integer.parseInt(cartItem.getTotalprice());
+		}
+		return Double.toString(totalPrice);
+	}
+
+	@Override
+	public void refreshAfterSubmit() throws BackendException {
+		loadOrderData();
+	}
+
+	@Override
+	public ShoppingCartSubsystem getShoppingCart() {
+		return shoppingCartSubsystem;
+	}
+
+	@Override
+	public void saveShoppingCart() throws BackendException {
+		if (shoppingCartSubsystem.getLiveCart().getShippingAddress() == null)
+			shoppingCartSubsystem.setShippingAddress(defaultShipAddress);
+		if (shoppingCartSubsystem.getLiveCart().getBillingAddress() == null)
+			shoppingCartSubsystem.setBillingAddress(defaultBillAddress);
+		if (shoppingCartSubsystem.getLiveCart().getPaymentInfo() == null)
+			shoppingCartSubsystem.setPaymentInfo(defaultPaymentInfo);
+		shoppingCartSubsystem.saveLiveCart();
+	}
+
+	@Override
+	public DbClassAddressForTest getGenericDbClassAddress() {
+		DbClassAddressForTest dbClassAddress = new DbClassAddress();
+		return dbClassAddress;
+	}
+
+	@Override
+	public CustomerProfile getGenericCustomerProfile() {
+		CustomerProfile cust = new CustomerProfileImpl(1, "Test_Firs_Name",
+				"Test_Last_Name");
+		return cust;
+	}
+
+	@Override
+	public DbClassPaymentInfoForTest getGenericDbClassPaymentInfo() {
+		DbClassPaymentInfoForTest dbClassPayment = new DbClassPayment();
+		return dbClassPayment;
+	}
+
+}

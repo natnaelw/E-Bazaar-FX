@@ -1,0 +1,403 @@
+
+package business.ordersubsystem;
+
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.text.SimpleDateFormat;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.Collections;
+import java.util.Date;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.logging.Logger;
+
+import presentation.gui.GuiUtils;
+import middleware.DbConfigProperties;
+import middleware.dataaccess.DataAccessSubsystemFacade;
+import middleware.exceptions.DatabaseException;
+import middleware.externalinterfaces.DataAccessSubsystem;
+import middleware.externalinterfaces.DbClass;
+import middleware.externalinterfaces.DbConfigKey;
+ 
+import business.externalinterfaces.Address;
+import business.externalinterfaces.CartItem;
+import business.externalinterfaces.CreditCard;
+import business.externalinterfaces.CustomerProfile;
+import business.externalinterfaces.Order;
+import business.externalinterfaces.OrderItem;
+ 
+import business.externalinterfaces.ShoppingCart;
+ 
+ 
+
+
+
+class DbClassOrder implements DbClass {
+	private static final Logger LOG = 
+		Logger.getLogger(DbClassOrder.class.getPackage().getName());
+	private DataAccessSubsystem dataAccessSS = 
+    	new DataAccessSubsystemFacade();
+    private String query;
+    private String queryType;
+    private final String GET_ORDER_ITEMS = "GetOrderItems";
+    private final String GET_ORDER_IDS = "GetOrderIds";
+    private final String GET_ORDER_DATA = "GetOrderData";
+    private final String SUBMIT_ORDER = "SubmitOrder";
+    private final String SUBMIT_ORDER_ITEM = "SubmitOrderItem";	
+    private final String GET_ORDER_HISTORY ="GetOrderHistory";
+	final String DELETE_CART = "DeleteCart";
+	final String DELETE_ALL_CART_ITEMS = "DeleteAllCartItems";
+	private final String DATE_PATTERN = "MM/dd/yyyy";
+    
+    private CustomerProfile custProfile;
+    private Integer orderId;
+    private List<Integer> orderIds;
+    private List<OrderItem> orderItems;
+    private OrderImpl orderData;
+	private OrderItem orderItem;
+    private Order order;  
+    private LinkedList<Order> orderList;
+    
+    DbClassOrder(){}
+    
+    DbClassOrder(OrderImpl order){
+        this.order = order;
+    }
+    
+    DbClassOrder(OrderItem orderItem ){
+        this.orderItem = orderItem;
+    }
+    
+    DbClassOrder(CustomerProfile custProfile) {
+    	this.custProfile = custProfile;
+    }
+    
+    DbClassOrder(OrderImpl order, CustomerProfile custProfile){
+        this(order);
+        this.custProfile = custProfile;
+    } 
+    
+    List<Integer> getAllOrderIds(CustomerProfile custProfile) throws DatabaseException {
+        this.custProfile=custProfile;
+        queryType = GET_ORDER_IDS;
+        dataAccessSS.atomicRead(this);
+        return Collections.unmodifiableList(orderIds);      
+    }
+    
+    OrderImpl getOrderData(Integer orderId) throws DatabaseException {
+    	queryType = GET_ORDER_DATA;
+    	this.orderId=orderId;  
+    	dataAccessSS.atomicRead(this);      	
+        return orderData;
+    }
+    ///submit order
+    
+    
+    
+    public void buildQuery() {
+        if(queryType.equals(GET_ORDER_ITEMS)) {
+            buildGetOrderItemsQuery();
+        }
+        else if(queryType.equals(GET_ORDER_IDS)) {
+            buildGetOrderIdsQuery();
+        }
+        else if(queryType.equals(GET_ORDER_DATA)) {
+        	buildGetOrderDataQuery();
+        }
+        else if(queryType.equals(SUBMIT_ORDER)) {
+            buildSaveOrderQuery();
+        }
+        else if(queryType.equals(SUBMIT_ORDER_ITEM)) {
+            buildSaveOrderItemQuery();
+        }
+        else if(queryType.equals(GET_ORDER_HISTORY)) {
+           
+        	buildGetOrderHistoryQuery();
+        }
+        else if(queryType.equals(DELETE_CART)) {
+            
+        	buildDeleteSavedShoppingCartItemsQuery();
+        }
+        else if(queryType.equals(DELETE_ALL_CART_ITEMS)) {
+            
+        	buildDeleteSavedShoppingCartQuery();
+        }
+    }
+    
+	private void buildSaveOrderQuery(){
+        Address shipAddr = order.getShipAddress();
+        Address billAddr = order.getBillAddress();
+        CreditCard cc = order.getPaymentInfo();
+        query = "INSERT into Ord "+
+        "(orderid, custid, shipaddress1, shipcity, shipstate, shipzipcode, billaddress1, billcity, billstate,"+
+           "billzipcode, nameoncard,  cardnum,cardtype, expdate, orderdate, totalpriceamount)" +
+        "VALUES(NULL," + custProfile.getCustId() + ",'"+
+                  shipAddr.getStreet()+"','"+
+                  shipAddr.getCity()+"','"+
+                  shipAddr.getState()+"','"+
+                  shipAddr.getZip()+"','"+
+                  billAddr.getStreet()+"','"+
+                  billAddr.getCity()+"','"+
+                  billAddr.getState()+"','"+
+                  billAddr.getZip()+"','"+
+                  cc.getNameOnCard()+"','"+
+                  cc.getCardNum()+"','"+
+                  cc.getCardType()+"','"+
+                  cc.getExpirationDate()+"','"+
+                  order.getOrderDate().format(
+							DateTimeFormatter.ofPattern(DATE_PATTERN))+"',"+
+                  order.getTotalPrice()+"); ";  
+        
+        
+        
+        
+        
+    }
+	
+    private void buildSaveOrderItemQuery(){
+    	//implement
+    	
+    	query = "INSERT INTO OrderItem(  orderid, productid, quantity,  totalprice, shipmentcost, taxamount)"
+    	+"VALUES("+ orderItem.getOrderId()+","
+    			 + orderItem.getProductId()+","
+    			  + orderItem.getQuantity()+","
+    			   + orderItem.getTotalPrice()+","
+    			    +  "NULL ,"
+    			     +  "NULL "
+    			  + ")";
+        
+    }
+
+    private void buildGetOrderDataQuery() {
+        query = "SELECT orderdate, totalpriceamount FROM Ord WHERE orderid = " + orderId;     
+    }
+    
+    private void buildGetOrderIdsQuery() {
+        query = "SELECT orderid FROM Ord WHERE custid = "+custProfile.getCustId();     
+    }
+    
+    private void buildGetOrderItemsQuery() {
+        query = "SELECT * FROM OrderItem WHERE orderid = "+orderId; 
+    }
+    
+    private void buildGetOrderHistoryQuery() {
+        query = "SELECT * FROM Ord WHERE custid = "+custProfile.getCustId();     
+    }
+    
+    private void buildDeleteSavedShoppingCartItemsQuery() {
+    query =  " DELETE FROM shopcartitem WHERE shopcartid IN( SELECT shopcartid " + "FROM ShopCartTbl " + "WHERE custid = "
+			+ custProfile.getCustId()+" );";
+    }
+    
+    private void buildDeleteSavedShoppingCartQuery() {
+    	query =  "  DELETE FROM ShopCartTbl WHERE custid = "+ custProfile.getCustId()+" ;";
+        }
+    
+    
+    private void populateOrderItems(ResultSet rs) throws DatabaseException {
+    	orderItems = new LinkedList<OrderItem>();
+		try {
+			 
+			 Integer productId;
+			 Integer orderId;
+			 Integer quantity;
+			 Double totalprice;
+			 
+			while (rs.next()) {
+				productId   = rs.getInt("productId");
+				orderId = rs.getInt("orderId");
+				quantity    =rs.getInt("quantity");
+				 totalprice =rs.getDouble("totalprice");
+				 
+				orderItem = new OrderItemImpl(productId,orderId,quantity,totalprice );
+				 
+				orderItems.add(orderItem);
+			}
+		} catch (SQLException e) {
+			throw new DatabaseException(e);
+		}
+    }
+    
+    private void populateOrderIds(ResultSet resultSet) throws DatabaseException {
+        orderIds = new LinkedList<Integer>();
+        try {
+            while(resultSet.next()){
+                orderIds.add(resultSet.getInt("orderid"));
+            }
+        }
+        catch(SQLException e){
+            throw new DatabaseException(e);
+        }
+    }
+    
+    private void populateOrderData(ResultSet rs) throws DatabaseException {  	
+    	orderList = new LinkedList<Order>();
+		try {
+			Order order = null;
+			Integer	orderId;
+			 
+			while (rs.next()) {
+				orderId = rs.getInt("orderid");
+			  
+				order = new OrderImpl();
+				order.setOrderId(orderId);
+				 
+				orderList.add(order);
+			}
+		} catch (SQLException e) {
+			throw new DatabaseException(e);
+		}
+    }    
+ 
+   
+    private void populateOrderHistoryData(ResultSet rs) throws DatabaseException {  	
+    	orderList = new LinkedList<Order>();
+		try {
+			Order order = null;
+			Integer	orderId;
+			String orderdate;
+			 
+			while (rs.next()) {
+				orderId = rs.getInt("orderid");
+				orderdate = rs.getString("orderdate");
+				 
+				order = new OrderImpl();
+				order.setOrderId(orderId);
+				order.setDate(GuiUtils.localDateForString(orderdate ));
+				//order.setPaymentInfo(new CreditCardImpl(nameOnCard, expirationDate, cardNum, cardType));
+				//order.setBillAddress(new AddressImpl(str, c, state, zip, false, true));
+				//order.setShipAddress(new AddressImpl(str, c, state, zip, true, false));
+				//order.setOrderItems(orderItems);
+				orderList.add(order);
+			}
+		} catch (SQLException e) {
+			throw new DatabaseException(e);
+		}
+    }
+    
+    public void populateEntity(ResultSet resultSet) throws DatabaseException {
+        if(queryType.equals(GET_ORDER_ITEMS)){
+            populateOrderItems(resultSet);
+        }
+        else if(queryType.equals(GET_ORDER_IDS)){
+            populateOrderIds(resultSet);
+        }
+        else if(queryType.equals(GET_ORDER_DATA)){
+        	populateOrderData(resultSet);
+        }else if(queryType.equals(GET_ORDER_HISTORY)) {
+            
+        	populateOrderHistoryData(resultSet);
+         } 
+    }
+    
+    public String getDbUrl() {
+    	DbConfigProperties props = new DbConfigProperties();	
+    	return props.getProperty(DbConfigKey.ACCOUNT_DB_URL.getVal());
+    }
+    
+    public String getQuery() {
+        return query;
+    }
+     
+    public void setOrderId(Integer orderId){
+        this.orderId = orderId;       
+    }
+
+    
+
+    
+    // Precondition: CustomerProfile has been set by the constructor
+    void submitOrder(ShoppingCart shopCart) throws DatabaseException {
+    	
+    	Order ord = new OrderImpl();
+    	 Date dNow = new Date( );
+         SimpleDateFormat ft = 
+         new SimpleDateFormat ("MM/dd/yyyy");
+         
+    	ord.setDate(GuiUtils.localDateForString(ft.format(dNow).toString()) );
+    	//implement
+    	ord.setShipAddress(shopCart.getShippingAddress());
+    	ord.setBillAddress(shopCart.getBillingAddress());
+    	ord.setPaymentInfo(shopCart.getPaymentInfo());
+    	this.order = ord;
+    	
+    	queryType = SUBMIT_ORDER;
+    	  int ordId= dataAccessSS.saveWithinTransaction(this);
+		
+ 
+    	
+    	for(Iterator<CartItem> i = shopCart.getCartItems().iterator(); i.hasNext(); ) {
+    	     CartItem item = i.next();
+    	     orderItem = new OrderItemImpl(item.getProductid(),ordId, Integer.parseInt(item.getQuantity()),Double.parseDouble( item.getTotalprice()));
+    	     submitOrderItem(orderItem);
+    	}
+    	
+    	deleteAllCartItems();
+    	deleteCart();
+    }
+    
+   
+	    
+    
+    /** This is part of the general submitOrder method */
+	private Integer submitOrderData() throws DatabaseException {	
+		queryType = SUBMIT_ORDER;
+		//creation and release of connection handled by submitOrder
+		return dataAccessSS.save();    
+	}
+	
+	/** This is part of the general submitOrder method */
+	private void submitOrderItem(OrderItem item) throws DatabaseException {
+        this.orderItem = item;
+        queryType=SUBMIT_ORDER_ITEM;
+        //creation and release of connection handled by submitOrder
+        dataAccessSS.save();        
+	}
+   
+
+	// Support method for saveCart -- part of another transaction
+	private void deleteCart( ) throws DatabaseException {
+		 
+		queryType = DELETE_CART;
+		dataAccessSS.delete();
+
+	}
+
+	// Support method for saveCart -- part of another transaction
+	private void deleteAllCartItems( ) throws DatabaseException {
+		 
+		queryType = DELETE_ALL_CART_ITEMS;
+		dataAccessSS.delete();
+	}
+	
+  
+    
+	public List<Order> getOrderHistory() {
+	 
+		queryType = GET_ORDER_HISTORY;
+    	try {
+			dataAccessSS.atomicRead(this);
+		} catch (DatabaseException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}      	
+        
+        return orderList;
+		 
+	}   
+	
+	  public List<OrderItem> getOrderItems(Integer orderId)  {
+	        queryType = GET_ORDER_ITEMS;
+	        this.orderId=orderId;
+	    	try {
+				dataAccessSS.atomicRead(this);
+			} catch (DatabaseException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+	        return Collections.unmodifiableList(orderItems);        
+	    }
+}
